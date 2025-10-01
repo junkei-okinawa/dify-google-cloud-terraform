@@ -20,7 +20,65 @@
 - Google Cloud アカウント
 - Terraform インストール済み
 - gcloud CLI インストール済み
-- 必要なAPIの有効化 (Serverless VPC Access, Service Networking, etc.)
+
+### 必要なAPIの有効化
+
+Difyのデプロイに必要なGoogle Cloud APIを一括で有効化します：
+
+```sh
+# プロジェクトIDを設定（例：your-project-id）
+export PROJECT_ID="your-project-id"
+
+# 必要なAPIを一括有効化
+gcloud services enable \
+  artifactregistry.googleapis.com \
+  compute.googleapis.com \
+  servicenetworking.googleapis.com \
+  redis.googleapis.com \
+  vpcaccess.googleapis.com \
+  run.googleapis.com \
+  storage.googleapis.com \
+  sqladmin.googleapis.com \
+  file.googleapis.com \
+  cloudbuild.googleapis.com \
+  containerregistry.googleapis.com \
+  --project=$PROJECT_ID
+```
+
+有効化されたAPIの確認：
+```sh
+gcloud services list --enabled --project=$PROJECT_ID --filter="name:(artifactregistry OR compute OR servicenetworking OR redis OR vpcaccess OR run OR storage OR sqladmin OR file OR cloudbuild OR containerregistry)" --format="table(name,title)"
+```
+
+### Terraform State管理用バケットの作成と設定
+
+Terraformの状態ファイルを保存するGCSバケットを作成し、設定を自動更新します：
+
+```sh
+# Terraform state用GCSバケットを作成（既存の場合はスキップ）
+export BUCKET_NAME="${PROJECT_ID}-terraform-state-dify"
+
+# バケットの存在確認と作成
+if ! gsutil ls -p $PROJECT_ID gs://$BUCKET_NAME 2>/dev/null; then
+    echo "Creating bucket: gs://$BUCKET_NAME"
+    gsutil mb -p $PROJECT_ID -c STANDARD -l asia-northeast1 gs://$BUCKET_NAME
+else
+    echo "Bucket already exists: gs://$BUCKET_NAME"
+fi
+
+# provider.tfのバケット名を自動更新
+cd terraform/environments/dev
+sed -i.bak "s/your-tfstate-bucket/$BUCKET_NAME/g" provider.tf
+
+# 変更を確認
+echo "Updated provider.tf:"
+grep -n "bucket.*=" provider.tf
+```
+
+バケットの作成確認：
+```sh
+gsutil ls -p $PROJECT_ID | grep terraform-state-dify
+```
 
 ## 設定
 - `terraform/environments/dev/terraform.tfvars` ファイルで環境固有の値を設定します。
@@ -32,7 +90,7 @@
 >
 > 誤コミット防止のため、すぐに `*.tfvars` を `.gitignore` に追加してください。安全な管理には環境変数 (`TF_VAR_...`) や Google Secret Manager 等の利用を推奨します。
 
-- terraform stateを管理する用のGCSバケットを事前に作成し、`terraform/environments/dev/provider.tf` ファイルの "your-tfstate-bucket" を作成したバケット名に書き換えます。
+- Terraform stateを管理するGCSバケットは上記の自動化コマンドで作成・設定されます。手動で設定する場合は、`terraform/environments/dev/provider.tf`ファイルの"your-tfstate-bucket"を作成したバケット名に置換してください。
 
 ## 始め方
 1. リポジトリをクローン:
@@ -73,13 +131,96 @@
     terraform apply
     ```
 
+## デプロイ完了後の確認
 
-## リソースの削除
+### DifyのWebアプリケーションURLを確認
+
 ```sh
-terraform destroy
+# Cloud RunサービスのURLを確認
+gcloud run services list \
+  --project=$PROJECT_ID \
+  --region=asia-northeast1 \
+  --format="table(metadata.name,status.url)"
 ```
 
-注意: Cloud Storage、Cloud SQL、VPC、およびVPC Peeringは `terraform destroy` コマンドで削除できません。これらはデータ永続化のための重要なリソースです。コンソールにアクセスして慎重に削除してください。その後、`terraform destroy` コマンドを使用してすべてのリソースが削除されたことを確認できます。
+### Difyにアクセス
+
+```sh
+# DifyのメインサービスURLを取得
+DIFY_URL=$(gcloud run services describe dify-service \
+  --project=$PROJECT_ID \
+  --region=asia-northeast1 \
+  --format="value(status.url)")
+
+echo "Dify Web Application URL: $DIFY_URL"
+echo "ブラウザでアクセス: $DIFY_URL"
+
+# URLを直接ブラウザで開く（macOSの場合）
+open $DIFY_URL
+```
+
+### サービス状態の確認
+
+```sh
+# 全Cloud Runサービスの詳細状態を確認
+gcloud run services list \
+  --project=$PROJECT_ID \
+  --region=asia-northeast1 \
+  --format="table(metadata.name,status.url,status.conditions[0].type,status.conditions[0].status)"
+```
+
+
+## リソースの削除
+
+### 自動削除スクリプト（推奨）
+完全なリソース削除には以下の自動化スクリプトを使用してください：
+
+```sh
+# スクリプトに実行権限を付与（初回のみ）
+chmod +x cleanup-resources.sh
+
+# リソース削除実行
+./cleanup-resources.sh <your-project-id>
+```
+
+このスクリプトは以下の処理を自動実行します：
+1. Cloud SQL データベースの削除
+2. Cloud SQL インスタンスの削除
+3. Cloud Storage バケットの削除
+4. VPC Peering の削除
+5. デフォルトルートの自動検出・削除
+6. VPC ネットワークの削除
+7. Terraform destroy の実行
+
+### 手動削除（スクリプトが使用できない場合）
+スクリプトが使用できない場合は、以下のコマンドを順番に実行してください：
+
+```sh
+# 環境変数設定
+export PROJECT_ID="your-project-id"
+
+# 1. Cloud SQL Database の削除
+gcloud sql databases delete dify --instance=postgres-instance --project=$PROJECT_ID --quiet
+gcloud sql databases delete dify_plugin --instance=postgres-instance --project=$PROJECT_ID --quiet
+
+# 2. Cloud SQL インスタンスの削除
+gcloud sql instances delete postgres-instance --project=$PROJECT_ID --quiet
+
+# 3. Cloud Storage の削除
+gsutil rm -r "gs://${PROJECT_ID}_dify"
+
+# 4. VPC Peering の削除
+gcloud compute networks peerings delete servicenetworking-googleapis-com --network=dify-vpc --project=$PROJECT_ID --quiet
+
+# 5. VPC ネットワークの削除
+# デフォルトルートがある場合は先に削除
+gcloud compute routes list --filter="network:dify-vpc AND name~default-route" --project=$PROJECT_ID --format="value(name)" | xargs -I {} gcloud compute routes delete {} --project=$PROJECT_ID --quiet
+gcloud compute networks delete dify-vpc --project=$PROJECT_ID --quiet
+
+# 6. Terraform destroy
+cd terraform/environments/dev
+terraform destroy -auto-approve
+```
 
 ## 参照
 - [Dify](https://dify.ai/)

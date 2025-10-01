@@ -8,8 +8,15 @@ locals {
     "APP_WEB_URL"                                = ""
     "CHECK_UPDATE_URL"                           = "https://updates.dify.ai"
     "OPENAI_API_BASE"                            = "https://api.openai.com/v1"
+    "OPENAI_API_KEY"                             = "sk-dummy-key-for-initialization"
     "FILES_URL"                                  = ""
     "MIGRATION_ENABLED"                          = "true"
+    "PYTHONDONTWRITEBYTECODE"                    = "1"
+    "SERVER_WORKER_CLASS"                        = "sync"
+    "GEVENT_RESOLVER"                            = "ares"
+    "PYTHONUNBUFFERED"                           = "1"
+    "REQUESTS_CA_BUNDLE"                         = "/etc/ssl/certs/ca-certificates.crt"
+    "SSL_CERT_FILE"                              = "/etc/ssl/certs/ca-certificates.crt"
     "CELERY_BROKER_URL"                          = "redis://${module.redis.redis_host}:${module.redis.redis_port}/1"
     "WEB_API_CORS_ALLOW_ORIGINS"                 = "*"
     "CONSOLE_CORS_ALLOW_ORIGINS"                 = "*"
@@ -19,7 +26,6 @@ locals {
     "DB_PORT"                                    = var.db_port
     "STORAGE_TYPE"                               = var.storage_type
     "GOOGLE_STORAGE_BUCKET_NAME"                 = module.storage.storage_bucket_name
-    "GOOGLE_STORAGE_SERVICE_ACCOUNT_JSON_BASE64" = module.storage.storage_admin_key_base64
     "REDIS_HOST"                                 = module.redis.redis_host
     "REDIS_PORT"                                 = module.redis.redis_port
     "VECTOR_STORE"                               = var.vector_store
@@ -61,6 +67,7 @@ module "cloudrun" {
   shared_env_vars             = local.shared_env_vars
   min_instance_count          = var.min_instance_count
   max_instance_count          = var.max_instance_count
+  storage_bucket_name         = module.storage.storage_bucket_name
 
   depends_on = [google_project_service.enabled_services]
 }
@@ -142,6 +149,10 @@ locals {
     "vpcaccess.googleapis.com",
     "run.googleapis.com",
     "storage.googleapis.com",
+    "sqladmin.googleapis.com",          # Cloud SQL 管理に必要
+    "file.googleapis.com",              # Filestore に必要
+    "cloudbuild.googleapis.com",        # Docker イメージビルドに必要
+    "containerregistry.googleapis.com", # コンテナレジストリに必要（Artifact Registryの補完）
   ]
 }
 

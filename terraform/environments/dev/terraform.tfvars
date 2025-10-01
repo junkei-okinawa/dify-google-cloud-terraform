@@ -1,5 +1,5 @@
 project_id                              = "your-project-id" # replace with your project id
-region                                  = "your-region"     # replace with your region
+region                                  = "asia-northeast1"     # replace with your region
 dify_version                            = "latest"
 dify_plugin_daemon_version              = "latest-local"
 dify_sandbox_version                    = "latest"

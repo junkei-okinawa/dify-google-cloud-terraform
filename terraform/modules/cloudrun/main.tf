@@ -6,6 +6,9 @@ resource "google_service_account" "dify_service_account" {
 resource "google_project_iam_member" "dify_service_account_role" {
   for_each = toset([
     "roles/run.admin",
+    "roles/storage.admin",
+    "roles/cloudsql.client",
+    "roles/redis.editor"
   ])
   project = var.project_id
   member  = "serviceAccount:${google_service_account.dify_service_account.email}"
@@ -30,10 +33,18 @@ resource "google_cloud_run_service_iam_binding" "public_sanbox" {
   ]
 }
 
+# Cloud Run Service AccountにStorage Bucketへのアクセス権限を付与
+resource "google_storage_bucket_iam_member" "cloudrun_storage_access" {
+  bucket = var.storage_bucket_name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.dify_service_account.email}"
+}
+
 resource "google_cloud_run_v2_service" "dify_service" {
   name     = "dify-service"
   location = var.region
   ingress  = var.cloud_run_ingress
+  deletion_protection = true
   template {
     service_account       = google_service_account.dify_service_account.email
     execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
@@ -393,6 +404,7 @@ resource "google_cloud_run_v2_service" "dify_service" {
 resource "google_cloud_run_v2_service" "dify_sandbox" {
   name     = "dify-sandbox"
   location = var.region
+  deletion_protection = true
 
   template {
     containers {
