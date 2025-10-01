@@ -131,6 +131,38 @@ gsutil ls -p $PROJECT_ID | grep terraform-state-dify
     terraform apply
     ```
 
+## 自動デプロイ（推奨）
+
+手動でのステップ実行が面倒な場合は、以下の自動デプロイスクリプトを使用してください：
+
+```sh
+# スクリプトに実行権限を付与（初回のみ）
+chmod +x deploy-dify.sh
+
+# 一括デプロイ実行
+./deploy-dify.sh <your-project-id> <your-region>
+```
+
+このスクリプトは以下の処理を自動実行します：
+1. 必要なGoogle Cloud APIの一括有効化
+2. Terraform State管理用バケットの作成と設定
+3. Terraformの初期化
+4. terraform.tfvarsのPROJECT_IDとregionの自動置換
+5. Artifact Registry リポジトリの作成
+6. コンテナイメージのビルド＆プッシュ
+7. Terraformの適用（--auto-approve）
+8. DifyのWebアプリケーションURLの表示
+
+**例:**
+```sh
+./deploy-dify.sh my-gcp-project asia-northeast1
+```
+
+**注意事項:**
+- 初回実行前にgcloud CLIでプロジェクトにログインしていることを確認してください
+- スクリプト実行には数十分かかる場合があります
+- エラーが発生した場合は、各ステップを手動で実行してください
+
 ## デプロイ完了後の確認
 
 ### DifyのWebアプリケーションURLを確認

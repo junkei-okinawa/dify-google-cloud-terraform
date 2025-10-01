@@ -136,6 +136,38 @@ gsutil ls -p $PROJECT_ID | grep terraform-state-dify
     terraform apply
     ```
 
+## Automated Deployment (Recommended)
+
+If you find the manual steps tedious, use the following automated deployment script:
+
+```sh
+# Grant execute permission to the script (first time only)
+chmod +x deploy-dify.sh
+
+# Run automated deployment
+./deploy-dify.sh <your-project-id> <your-region>
+```
+
+This script automatically performs the following operations:
+1. Enable required Google Cloud APIs in batch
+2. Create and configure Terraform State management bucket
+3. Initialize Terraform
+4. Automatically replace PROJECT_ID and region in terraform.tfvars
+5. Create Artifact Registry repositories
+6. Build and push container images
+7. Apply Terraform configuration (--auto-approve)
+8. Display Dify Web Application URL
+
+**Example:**
+```sh
+./deploy-dify.sh my-gcp-project asia-northeast1
+```
+
+**Notes:**
+- Make sure you are logged in to the project with gcloud CLI before first execution
+- The script may take several tens of minutes to complete
+- If an error occurs, execute each step manually
+
 ## Post-Deployment Verification
 
 ### Check Dify Web Application URL
