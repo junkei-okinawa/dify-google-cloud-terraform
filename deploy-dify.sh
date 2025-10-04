@@ -194,9 +194,14 @@ esac
     # Step 6: Build and push container images
     print_step "6" "Building and pushing container images..."
     cd ../../..
-    chmod +x docker/cloudbuild.sh
-    ./docker/cloudbuild.sh "$PROJECT_ID" "$REGION"
-    print_success "Container images built and pushed"
+    # コンテナイメージが未プッシュの場合はプッシュ
+    if ! gcloud artifacts repositories list --project="$PROJECT_ID" --location="$REGION" --filter="name~dify*"; then
+        chmod +x docker/cloudbuild.sh
+        ./docker/cloudbuild.sh "$PROJECT_ID" "$REGION"
+        print_success "Container images built and pushed"
+    else
+        print_warning "Container images already exist in Artifact Registry. Skipping build and push."
+    fi
 
     # Step 7: Apply Terraform configuration
     print_step "7" "Applying Terraform configuration..."
