@@ -1,270 +1,56 @@
 #!/bin/bash
 
-# Dify GCP リソース完全削除スクリプト
-# 使用方法: ./cleanup-resources.sh <project-id>
-# 戦略: 個別リソース削除 → Terraform destroy
+# Dify GCP リソース削除スクリプト (Terraform主体)
+# 使用方法: ./cleanup-resources.sh <project-id> <region>
 
 set -e
 
 PROJECT_ID=$1
+REGION=$2
 
-if [ -z "$PROJECT_ID" ]; then
-    echo "使用方法: $0 <project-id>"
+if [ -z "$PROJECT_ID" ] || [ -z "$REGION" ]; then
+    echo "使用方法: $0 <project-id> <region>"
+    echo "例: $0 my-gcp-project asia-northeast1"
     exit 1
 fi
 
 echo "=== Dify GCP リソース削除スクリプト ==="
 echo "プロジェクト: $PROJECT_ID"
-echo "戦略: 個別リソース削除 → Terraform destroy"
+echo "リージョン: $REGION"
 echo ""
 
-# 1. Cloud SQL Database の削除
-echo "1. Cloud SQL Database の削除..."
-# Cloud SQLインスタンスが残っている場合のみデータベースを削除
-if gcloud sql instances describe postgres-instance --project=$PROJECT_ID &>/dev/null; then
-    gcloud sql databases delete dify --instance=postgres-instance --project=$PROJECT_ID --quiet 2>/dev/null || echo "  - dify データベースは既に削除済みまたは存在しません"
-    gcloud sql databases delete dify_plugin --instance=postgres-instance --project=$PROJECT_ID --quiet 2>/dev/null || echo "  - dify_plugin データベースは既に削除済みまたは存在しません"
-else
-    echo "  - Cloud SQLインスタンスが存在しないため、データベース削除をスキップします"
-fi
+# 1. Cloud SQL インスタンスの削除保護を無効化
+# Terraformが削除できるように、deletion_protectionフラグを無効化します。
+echo "1. Cloud SQL インスタンスの削除保護を無効化しています..."
+gcloud sql instances patch postgres-instance --no-deletion-protection --project=$PROJECT_ID --quiet 2>/dev/null || echo "  - Cloud SQLインスタンスが見つからないか、すでに保護は無効です。"
 
-# 2. Cloud SQL インスタンスの削除
-echo "2. Cloud SQL インスタンスの削除..."
-# Terraformでdeletion_protection=trueが設定されているため、まず無効化してから削除
-echo "  - deletion_protection を一時的に無効化..."
-gcloud sql instances patch postgres-instance --no-deletion-protection --project=$PROJECT_ID --quiet 2>/dev/null || echo "    ※ deletion_protection の更新に失敗、またはインスタンスが存在しません"
-# インスタンス削除
-gcloud sql instances delete postgres-instance --project=$PROJECT_ID --quiet 2>/dev/null || echo "  - postgres-instance は既に削除済みまたは存在しません"
-
-# 2.5. Redis インスタンスの削除
-echo "2.5. Redis インスタンスの削除..."
-gcloud redis instances delete redis-instance --region=asia-northeast1 --project=$PROJECT_ID --quiet 2>/dev/null || echo "  - redis-instance は既に削除済みまたは存在しません"
-
-# 3. Cloud Storage の削除
-echo "3. Cloud Storage の削除..."
-BUCKET_NAME="${PROJECT_ID}_dify"
-gsutil rm -r "gs://$BUCKET_NAME" 2>/dev/null || echo "  - バケット $BUCKET_NAME は既に削除済みまたは存在しません"
-
-# 4. Cloud Run サービスの削除
-echo "4. Cloud Run サービスの削除..."
-gcloud run services delete dify-service --region=asia-northeast1 --project=$PROJECT_ID --quiet 2>/dev/null || echo "  - dify-service は既に削除済みまたは存在しません"
-gcloud run services delete dify-sandbox --region=asia-northeast1 --project=$PROJECT_ID --quiet 2>/dev/null || echo "  - dify-sandbox は既に削除済みまたは存在しません"
-
-# 5. ファイアウォールルールの削除
-echo "5. ファイアウォールルールの削除..."
-FIREWALL_RULES=$(gcloud compute firewall-rules list --filter="network:dify-vpc" --project=$PROJECT_ID --format="value(name)" 2>/dev/null || true)
-for rule in $FIREWALL_RULES; do
-    echo "  - ファイアウォールルール $rule を削除..."
-    gcloud compute firewall-rules delete $rule --project=$PROJECT_ID --quiet 2>/dev/null || echo "    ※ $rule の削除に失敗しました"
-done
-
-# 6. VPC ネットワーク関連リソースの削除
-echo "6. VPC ネットワーク関連リソースの削除..."
-if gcloud compute networks describe dify-vpc --project=$PROJECT_ID &>/dev/null; then
-    echo "  - VPC dify-vpc が残っているため、関連リソースを個別に削除します"
-
-    # Cloud Run サービス削除後の待機（serverless IP が解放されるまで）
-    echo "    - Cloud Run サービス削除後の待機（30秒）..."
-    sleep 30
-
-    # 1. デフォルトルートを削除（ローカルルートはスキップ）
-    echo "    - デフォルトルートを削除します..."
-    ROUTES=$(gcloud compute routes list --filter="network:dify-vpc AND NOT name~default-route" --project=$PROJECT_ID --format="value(name)" 2>/dev/null || true)
-    for route in $ROUTES; do
-        echo "      - デフォルトルート $route を削除..."
-        gcloud compute routes delete $route --project=$PROJECT_ID --quiet 2>/dev/null || echo "        ※ $route は削除できないルートのためスキップします"
-    done
-
-    # 2. VPC Peering の削除（サブネット削除後）
-    echo "    - VPC peering を削除します..."
-    # 指定順序でVPC peeringを削除
-    PEERING_ORDER=("firestore-peer" "redis-peer" "servicenetworking-googleapis-com")
-    for peering_prefix in "${PEERING_ORDER[@]}"; do
-        # 該当するpeeringを検出
-        PEERINGS=$(gcloud compute networks peerings list --network=dify-vpc --project=$PROJECT_ID --format="value(name)" 2>/dev/null | grep "$peering_prefix" || true)
-        for peering in $PEERINGS; do
-            if [ -n "$peering" ] && [ "$peering" != "dify-vpc" ]; then
-                echo "      - VPC peering $peering を削除..."
-                gcloud compute networks peerings delete $peering --network=dify-vpc --project=$PROJECT_ID --quiet 2>/dev/null || echo "        ※ $peering の削除に失敗しました"
-            fi
-        done
-    done
-    # 残りのpeeringを削除
-    REMAINING_PEERINGS=$(gcloud compute networks peerings list --network=dify-vpc --project=$PROJECT_ID --format="value(name)" 2>/dev/null || true)
-    for peering in $REMAINING_PEERINGS; do
-        if [ -n "$peering" ] && [ "$peering" != "dify-vpc" ]; then
-            echo "      - 残りのVPC peering $peering を削除..."
-            gcloud compute networks peerings delete $peering --network=dify-vpc --project=$PROJECT_ID --quiet 2>/dev/null || echo "        ※ $peering の削除に失敗しました"
-        fi
-    done
-
-    # 3. NAT Router の削除
-    echo "    - NAT Router を削除します..."
-    # NAT configを先に削除
-    gcloud compute routers nats delete nat-config --router=nat-router --region=asia-northeast1 --project=$PROJECT_ID --quiet 2>/dev/null || echo "      ※ nat-config の削除に失敗しました"
-    # Routerを削除
-    gcloud compute routers delete nat-router --region=asia-northeast1 --project=$PROJECT_ID --quiet 2>/dev/null || echo "      ※ nat-router の削除に失敗しました"
-
-    # 4. 静的IPアドレスの削除
-    echo "    - 静的IPアドレスを削除します..."
-    # private-ip-range (グローバル) - 動的検出
-    PRIVATE_IP=$(gcloud compute addresses list --filter="name:private-ip-range" --global --project=$PROJECT_ID --format="value(name)" 2>/dev/null || true)
-    if [ -n "$PRIVATE_IP" ]; then
-        echo "      - Private IP range $PRIVATE_IP を削除..."
-        gcloud compute addresses delete $PRIVATE_IP --global --project=$PROJECT_ID --quiet 2>/dev/null || echo "        ※ $PRIVATE_IP の削除に失敗しました"
-    fi
-    # 5. serverless IPを動的に検出して削除（複数回試行 + 強制削除）
-    for attempt in {1..10}; do
-        echo "      - Serverless IP 削除試行 $attempt/10..."
-        SERVERLESS_IPS=$(gcloud compute addresses list --filter="purpose:SERVERLESS" --project=$PROJECT_ID --format="value(name,region)" 2>/dev/null || true)
-        if [ -z "$SERVERLESS_IPS" ]; then
-            echo "        ※ 削除するServerless IPが見つかりません"
-            break
-        fi
-        SERVERLESS_COUNT=$(echo "$SERVERLESS_IPS" | wc -l)
-        echo "        ※ $SERVERLESS_COUNT 個のServerless IPが見つかりました"
-        while read -r ip_name region; do
-            if [ -n "$ip_name" ] && [ -n "$region" ]; then
-                echo "        - Serverless IP $ip_name ($region) を削除..."
-                # 通常削除を試行
-                if gcloud compute addresses delete $ip_name --region=$region --project=$PROJECT_ID --quiet 2>/dev/null; then
-                    echo "          ※ $ip_name を削除しました"
-                else
-                    echo "          ※ $ip_name の削除に失敗しました（使用中の可能性あり）"
-                    # 最終試行時は強制削除を試行
-                    if [ $attempt -eq 10 ]; then
-                        echo "            ※ 最終試行: 強制削除を試みます..."
-                        # 注: GCPではserverless IPの強制削除は通常サポートされないが、念のため
-                        gcloud compute addresses delete $ip_name --region=$region --project=$PROJECT_ID --quiet 2>/dev/null || echo "            ※ 強制削除も失敗しました"
-                    fi
-                fi
-            fi
-        done <<< "$SERVERLESS_IPS"
-        if [ $attempt -lt 10 ]; then
-            echo "        - 次の試行まで待機（60秒）..."
-            sleep 60
-        fi
-    done
-
-    # 6. サブネットを削除
-    echo "    - サブネットを削除します..."
-    SUBNETS=$(gcloud compute networks subnets list --network=dify-vpc --project=$PROJECT_ID --format="value(name,region)" 2>/dev/null || true)
-    while read -r subnet region; do
-        if [ -n "$subnet" ] && [ -n "$region" ]; then
-            echo "      - サブネット $subnet ($region) を削除..."
-            # サブネットを使用しているリソースを確認
-            echo "        - サブネットの依存関係を確認..."
-            SUBNET_USERS=$(gcloud compute addresses list --filter="subnetwork~${subnet} AND region:${region}" --project=$PROJECT_ID --format="value(name,purpose)" 2>/dev/null || true)
-            if [ -n "$SUBNET_USERS" ]; then
-                echo "        - 警告: サブネットを使用しているIPアドレスがあります:"
-                echo "$SUBNET_USERS" | while read -r ip purpose; do
-                    echo "          - $ip ($purpose)"
-                done
-                echo "        - IPアドレス削除後に再試行します..."
-                # IP削除後に再度試行
-                sleep 30
-                # 再度確認
-                SUBNET_USERS_RETRY=$(gcloud compute addresses list --filter="subnetwork~${subnet} AND region:${region}" --project=$PROJECT_ID --format="value(name,purpose)" 2>/dev/null || true)
-                if [ -n "$SUBNET_USERS_RETRY" ]; then
-                    echo "        - まだ依存関係が残っています。スキップします。"
-                    continue
-                fi
-            fi
-            if gcloud compute networks subnets delete $subnet --region=$region --project=$PROJECT_ID --quiet 2>/dev/null; then
-                echo "        ※ サブネット $subnet を削除しました"
-            else
-                echo "        ※ サブネット $subnet の削除に失敗しました"
-                # 依存関係が残っている場合、最終手段としてスキップ
-                echo "        - 後続の処理を続行します（Terraform destroyで対応）"
-            fi
-        fi
-    done <<< "$SUBNETS"
-
-    # 7. VPC を削除（最後に削除）
-    echo "    - VPC dify-vpc を削除..."
-    gcloud compute networks delete dify-vpc --project=$PROJECT_ID --quiet 2>/dev/null || echo "      ※ VPC の削除に失敗しました"
-else
-    echo "  - VPC dify-vpc は既に削除済みまたは存在しません"
-fi
-
-# 7. Terraform destroy を実行（個別削除後に実行）
-echo "7. Terraform destroy の実行..."
-
-# Terraform 状態を更新（存在しないリソースを削除）
-echo "  - Terraform 状態を更新中..."
+# 2. Terraform destroy を実行
+# Terraformが依存関係を解決し、リソースを正しい順序で削除します。
+# dev環境ではCloud Runの削除保護は無効になっているため、追加の操作は不要です。
+echo "2. 'terraform destroy' を実行します..."
+echo "   VPC関連リソースの解放遅延により、一度失敗することがあります。"
 cd terraform/environments/dev
 
-# 既に削除されたリソースを状態から削除
-echo "    - 既に削除されたリソースを状態からクリア..."
-terraform state list 2>/dev/null | while read -r resource; do
-    echo "      - リソース $resource の存在確認..."
-    # リソースの種類に応じて存在確認
-    if echo "$resource" | grep -q "google_sql_database\|google_sql_user"; then
-        # Cloud SQL関連はインスタンス存在確認（個別削除されているはず）
-        if ! gcloud sql instances describe postgres-instance --project=$PROJECT_ID &>/dev/null; then
-            echo "        ※ Cloud SQLインスタンスが存在しないため、$resource を状態から削除"
-            terraform state rm "$resource" 2>/dev/null || echo "          ※ $resource の状態削除に失敗しました"
-        fi
-    elif echo "$resource" | grep -q "google_sql_database_instance"; then
-        # Cloud SQLインスタンス自体も確認
-        if ! gcloud sql instances describe postgres-instance --project=$PROJECT_ID &>/dev/null; then
-            echo "        ※ Cloud SQLインスタンスが個別削除されているため、$resource を状態から削除"
-            terraform state rm "$resource" 2>/dev/null || echo "          ※ $resource の状態削除に失敗しました"
-        fi
-    elif echo "$resource" | grep -q "google_cloud_run_v2_service"; then
-        # Cloud Runサービス存在確認
-        service_name=$(echo "$resource" | sed 's/.*services\/\([^\/]*\).*/\1/')
-        if ! gcloud run services describe "$service_name" --region=asia-northeast1 --project=$PROJECT_ID &>/dev/null; then
-            echo "        ※ Cloud Runサービス $service_name が存在しないため、$resource を状態から削除"
-            terraform state rm "$resource" 2>/dev/null || echo "          ※ $resource の状態削除に失敗しました"
-        fi
-    elif echo "$resource" | grep -q "google_storage_bucket"; then
-        # Cloud Storage存在確認
-        bucket_name=$(echo "$resource" | sed 's/.*buckets\/\([^\/]*\).*/\1/')
-        if ! gsutil ls -b "gs://$bucket_name" &>/dev/null; then
-            echo "        ※ Cloud Storageバケット $bucket_name が存在しないため、$resource を状態から削除"
-            terraform state rm "$resource" 2>/dev/null || echo "          ※ $resource の状態削除に失敗しました"
-        fi
-    fi
-done
-
-# Terraform destroy を実行（エラーが発生しても続行）
-echo "  - Terraform destroy を実行..."
-terraform destroy -auto-approve || echo "  ※ Terraform destroy で一部エラーが発生しましたが、続行します"
-
-# 追加のクリーンアップ：残ったリソースを強制削除
-echo "  - 追加クリーンアップを実行..."
-cd ../../..
-
-# 残ったserverless IPを再度試行
-echo "    - 残ったserverless IPの最終削除試行..."
-SERVERLESS_IPS=$(gcloud compute addresses list --filter="purpose:SERVERLESS" --project=$PROJECT_ID --format="value(name,region)" 2>/dev/null || true)
-if [ -n "$SERVERLESS_IPS" ]; then
-    while read -r ip_name region; do
-        if [ -n "$ip_name" ] && [ -n "$region" ]; then
-            echo "      - 最終試行: Serverless IP $ip_name ($region) を削除..."
-            gcloud compute addresses delete $ip_name --region=$region --project=$PROJECT_ID --quiet 2>/dev/null || echo "        ※ $ip_name の最終削除も失敗しました"
-        fi
-    done <<< "$SERVERLESS_IPS"
-else
-    echo "    ※ 残ったserverless IPはありません"
+# 1回目のdestroy実行
+if terraform destroy -auto-approve; then
+    echo "🎉 1回目の試行でリソースの削除が完了しました。"
+    exit 0
 fi
 
-# 残ったサブネットを再度試行
-echo "    - 残ったサブネットの最終削除試行..."
-if gcloud compute networks describe dify-vpc --project=$PROJECT_ID &>/dev/null; then
-    SUBNETS=$(gcloud compute networks subnets list --network=dify-vpc --project=$PROJECT_ID --format="value(name,region)" 2>/dev/null || true)
-    if [ -n "$SUBNETS" ]; then
-        while read -r subnet region; do
-            if [ -n "$subnet" ] && [ -n "$region" ]; then
-                echo "      - 最終試行: サブネット $subnet ($region) を削除..."
-                gcloud compute networks subnets delete $subnet --region=$region --project=$PROJECT_ID --quiet 2>/dev/null || echo "        ※ $subnet の最終削除も失敗しました"
-            fi
-        done <<< "$SUBNETS"
-    fi
+# 失敗した場合、GCPバックエンドでのリソース解放を待機
+echo "回目の試行でエラーが発生しました。VPC関連リソースが解放されるのを待機します..."
+echo "分間待機してから再試行します..."
+sleep 180
+
+# 2回目のdestroy実行
+echo "   'terraform destroy' を再試行します..."
+if terraform destroy -auto-approve; then
+    echo "🎉 2回目の試行でリソースの削除が完了しました。"
+else
+    echo "回目の試行でもエラーが発生しました。"
+    echo "   GCPコンソールで残存リソースを確認し、手動で削除してください。"
+    exit 1
 fi
 
 echo ""
 echo "=== 削除完了 ==="
-echo "すべての Dify GCP リソースが削除されました。"
-echo "一部のリソースが残っている場合は、しばらく待ってから再度実行してください。"

@@ -34,9 +34,9 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Check prerequisites
+# Check prerequisites and authentication
 check_prerequisites() {
-    print_step "0" "Checking prerequisites..."
+    print_step "0" "Checking prerequisites and authentication..." 
 
     if ! command_exists gcloud; then
         print_error "gcloud CLI is not installed. Please install it first."
@@ -53,15 +53,40 @@ check_prerequisites() {
         exit 1
     fi
 
-    print_success "Prerequisites check passed"
+    # Check gcloud authentication
+    if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" | grep -q "."; then
+        print_error "You are not logged in to gcloud. Please run 'gcloud auth login' and 'gcloud auth application-default login'."
+        exit 1
+    fi
+
+    # Check gcloud application-default authentication
+    if [ ! -f "${HOME}/.config/gcloud/application_default_credentials.json" ]; then
+        print_warning "Application default credentials not found. Please run 'gcloud auth application-default login'."
+        exit 1
+    fi
+
+    print_success "Prerequisites and authentication check passed"
 }
 
 # Main script
 main() {
     # Check arguments
+    PLAN_ONLY=false
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --plan-only)
+                PLAN_ONLY=true
+                shift
+                ;;
+            *)
+                break
+                ;;
+esac
+    done
+
     if [ $# -ne 2 ]; then
-        echo "Usage: $0 <PROJECT_ID> <REGION>"
-        echo "Example: $0 my-project asia-northeast1"
+        echo "Usage: $0 [--plan-only] <PROJECT_ID> <REGION>"
+        echo "Example: $0 --plan-only my-project asia-northeast1"
         exit 1
     fi
 
@@ -71,6 +96,9 @@ main() {
     echo "Starting Dify deployment with:"
     echo "  Project ID: $PROJECT_ID"
     echo "  Region: $REGION"
+    if [ "$PLAN_ONLY" = true ]; then
+        echo "  Mode: Plan-only"
+    fi
     echo ""
 
     check_prerequisites
@@ -127,23 +155,30 @@ main() {
     # Generate and replace secret keys if they are still default values
     if grep -q 'secret_key.*=.*"your-secret-key"' terraform.tfvars; then
         SECRET_KEY=$(openssl rand -base64 42)
-        sed -i.bak "s/your-secret-key/$SECRET_KEY/g" terraform.tfvars
+        sed -i.bak "s|your-secret-key|$SECRET_KEY|g" terraform.tfvars
         print_success "Generated and replaced secret_key"
     fi
 
     if grep -q 'plugin_daemon_key.*=.*"your-plugin-daemon-key"' terraform.tfvars; then
         PLUGIN_DAEMON_KEY=$(openssl rand -base64 42)
-        sed -i.bak "s/your-plugin-daemon-key/$PLUGIN_DAEMON_KEY/g" terraform.tfvars
+        sed -i.bak "s|your-plugin-daemon-key|$PLUGIN_DAEMON_KEY|g" terraform.tfvars
         print_success "Generated and replaced plugin_daemon_key"
     fi
 
     if grep -q 'plugin_dify_inner_api_key.*=.*"your-plugin-dify-inner-api-key"' terraform.tfvars; then
         PLUGIN_INNER_API_KEY=$(openssl rand -base64 42)
-        sed -i.bak "s/your-plugin-dify-inner-api-key/$PLUGIN_INNER_API_KEY/g" terraform.tfvars
+        sed -i.bak "s|your-plugin-dify-inner-api-key|$PLUGIN_INNER_API_KEY|g" terraform.tfvars
         print_success "Generated and replaced plugin_dify_inner_api_key"
     fi
 
     print_success "Updated terraform.tfvars"
+
+    if [ "$PLAN_ONLY" = true ]; then
+        print_step "5" "Planning Terraform configuration (plan-only mode)..."
+        terraform plan -var-file="terraform.tfvars"
+        print_success "Terraform plan completed"
+        exit 0
+    fi
 
     # Step 5: Create Artifact Registry repositories
     print_step "5" "Creating Artifact Registry repositories..."

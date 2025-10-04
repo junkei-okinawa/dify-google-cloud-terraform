@@ -404,7 +404,7 @@ resource "google_cloud_run_v2_service" "dify_service" {
 resource "google_cloud_run_v2_service" "dify_sandbox" {
   name     = "dify-sandbox"
   location = var.region
-  deletion_protection = true
+  deletion_protection = var.environment == "prod"
 
   template {
     containers {
