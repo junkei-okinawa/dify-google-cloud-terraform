@@ -121,6 +121,7 @@ main() {
     # Step 4: Update terraform.tfvars
     print_step "4" "Updating terraform.tfvars..."
     sed -i.bak "s/your-project-id/$PROJECT_ID/g" terraform.tfvars
+    sed -i.bak "s/your-region/$REGION/g" terraform.tfvars
     sed -i.bak "s/asia-northeast1/$REGION/g" terraform.tfvars
 
     # Generate and replace secret keys if they are still default values
