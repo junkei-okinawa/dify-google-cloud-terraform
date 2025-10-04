@@ -122,6 +122,26 @@ main() {
     print_step "4" "Updating terraform.tfvars..."
     sed -i.bak "s/your-project-id/$PROJECT_ID/g" terraform.tfvars
     sed -i.bak "s/asia-northeast1/$REGION/g" terraform.tfvars
+
+    # Generate and replace secret keys if they are still default values
+    if grep -q 'secret_key.*=.*"your-secret-key"' terraform.tfvars; then
+        SECRET_KEY=$(openssl rand -base64 42)
+        sed -i.bak "s/your-secret-key/$SECRET_KEY/g" terraform.tfvars
+        print_success "Generated and replaced secret_key"
+    fi
+
+    if grep -q 'plugin_daemon_key.*=.*"your-plugin-daemon-key"' terraform.tfvars; then
+        PLUGIN_DAEMON_KEY=$(openssl rand -base64 42)
+        sed -i.bak "s/your-plugin-daemon-key/$PLUGIN_DAEMON_KEY/g" terraform.tfvars
+        print_success "Generated and replaced plugin_daemon_key"
+    fi
+
+    if grep -q 'plugin_dify_inner_api_key.*=.*"your-plugin-dify-inner-api-key"' terraform.tfvars; then
+        PLUGIN_INNER_API_KEY=$(openssl rand -base64 42)
+        sed -i.bak "s/your-plugin-dify-inner-api-key/$PLUGIN_INNER_API_KEY/g" terraform.tfvars
+        print_success "Generated and replaced plugin_dify_inner_api_key"
+    fi
+
     print_success "Updated terraform.tfvars"
 
     # Step 5: Create Artifact Registry repositories
