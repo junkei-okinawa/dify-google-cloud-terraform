@@ -107,38 +107,44 @@ esac
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     cd "$SCRIPT_DIR"
 
-    # Step 1: Enable required APIs
-    print_step "1" "Enabling required Google Cloud APIs..."
-    gcloud services enable \
-        artifactregistry.googleapis.com \
-        compute.googleapis.com \
-        servicenetworking.googleapis.com \
-        redis.googleapis.com \
-        vpcaccess.googleapis.com \
-        run.googleapis.com \
-        storage.googleapis.com \
-        sqladmin.googleapis.com \
-        file.googleapis.com \
-        cloudbuild.googleapis.com \
-        containerregistry.googleapis.com \
-        --project="$PROJECT_ID" \
-        --quiet
-    print_success "APIs enabled successfully"
-
-    # Step 2: Create Terraform state bucket
-    print_step "2" "Creating Terraform state bucket..."
-    BUCKET_NAME="${PROJECT_ID}-terraform-state-dify"
-
-    if ! gsutil ls -p "$PROJECT_ID" "gs://$BUCKET_NAME" 2>/dev/null; then
-        gsutil mb -p "$PROJECT_ID" -c STANDARD -l "$REGION" "gs://$BUCKET_NAME"
-        print_success "Created bucket: gs://$BUCKET_NAME"
+    if [ "$PLAN_ONLY" = true ]; then
+        # Skip Step 1: Enable required APIs
+        # Skip Step 2: Create Terraform state bucket
+        echo "Skipping Steps 1 and 2 as not in plan-only mode"
     else
-        print_warning "Bucket already exists: gs://$BUCKET_NAME"
-    fi
+        # Step 1: Enable required APIs
+        print_step "1" "Enabling required Google Cloud APIs..."
+        gcloud services enable \
+            artifactregistry.googleapis.com \
+            compute.googleapis.com \
+            servicenetworking.googleapis.com \
+            redis.googleapis.com \
+            vpcaccess.googleapis.com \
+            run.googleapis.com \
+            storage.googleapis.com \
+            sqladmin.googleapis.com \
+            file.googleapis.com \
+            cloudbuild.googleapis.com \
+            containerregistry.googleapis.com \
+            --project="$PROJECT_ID" \
+            --quiet
+        print_success "APIs enabled successfully"
 
-    # Update provider.tf
-    sed -i.bak "s/your-tfstate-bucket/$BUCKET_NAME/g" terraform/environments/dev/provider.tf
-    print_success "Updated provider.tf with bucket name"
+        # Step 2: Create Terraform state bucket
+        print_step "2" "Creating Terraform state bucket..."
+        BUCKET_NAME="${PROJECT_ID}-terraform-state-dify"
+
+        if ! gsutil ls -p "$PROJECT_ID" "gs://$BUCKET_NAME" 2>/dev/null; then
+            gsutil mb -p "$PROJECT_ID" -c STANDARD -l "$REGION" "gs://$BUCKET_NAME"
+            print_success "Created bucket: gs://$BUCKET_NAME"
+        else
+            print_warning "Bucket already exists: gs://$BUCKET_NAME"
+        fi
+
+        # Update provider.tf
+        sed -i.bak "s/your-tfstate-bucket/$BUCKET_NAME/g" terraform/environments/dev/provider.tf
+        print_success "Updated provider.tf with bucket name"
+    fi
 
     # Step 3: Initialize Terraform
     print_step "3" "Initializing Terraform..."
