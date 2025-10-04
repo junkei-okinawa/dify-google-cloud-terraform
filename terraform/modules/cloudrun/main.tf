@@ -44,7 +44,7 @@ resource "google_cloud_run_v2_service" "dify_service" {
   name     = "dify-service"
   location = var.region
   ingress  = var.cloud_run_ingress
-  deletion_protection = true
+  deletion_protection = var.environment == "prod"
   template {
     service_account       = google_service_account.dify_service_account.email
     execution_environment = "EXECUTION_ENVIRONMENT_GEN2"

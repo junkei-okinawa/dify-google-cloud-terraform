@@ -47,6 +47,7 @@ module "cloudrun" {
 
   project_id                  = var.project_id
   region                      = var.region
+  environment                 = var.environment
   dify_version                = var.dify_version
   dify_sandbox_version        = var.dify_sandbox_version
   cloud_run_ingress           = var.cloud_run_ingress

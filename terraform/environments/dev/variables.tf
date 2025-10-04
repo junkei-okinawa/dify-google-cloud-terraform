@@ -6,6 +6,10 @@ variable "region" {
   type = string
 }
 
+variable "environment" {
+  type = string
+}
+
 variable "dify_version" {
   type = string
 }
