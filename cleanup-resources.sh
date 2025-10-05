@@ -230,8 +230,11 @@ if terraform destroy -auto-approve; then
         echo "  - Terraform stateバケット gs://$BUCKET_NAME は既に削除されています"
     fi
 else
-    echo "回目の試行でもエラーが発生しました。"
+    echo "2回目の試行でもエラーが発生しました。"
     echo "   GCPコンソールで残存リソースを確認し、手動で削除してください。"
+    echo "   VPCネットワーク、サブネット、静的IPアドレスが残っている可能性が高いです。"
+    echo "   静的IPアドレスは削除（解放されるまでに最大24時間かかる場合があります。以下のページで`serverless-ipv4-xxxxxxxx`のような名前のアドレスが削除されたらcleanup-resources.shを再実行してください）:"
+    echo "   https://console.cloud.google.com/networking/networks/details/dify-vpc?project=$PROJECT_ID&hl=ja&pageTab=ADDRESSES"
     exit 1
 fi
 
