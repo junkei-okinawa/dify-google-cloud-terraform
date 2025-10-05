@@ -19,6 +19,10 @@ echo "プロジェクト: $PROJECT_ID"
 echo "リージョン: $REGION"
 echo ""
 
+# ファイルの場所を取得
+SCRIPT_DIR=$(cd $(dirname $0); pwd)
+cd $SCRIPT_DIR/terraform/environments/dev
+
 # 1. Cloud SQL インスタンスの削除
 # Cloud SQLインスタンスが残っている場合のみデータベースを削除
 if gcloud sql instances describe postgres-instance --project=$PROJECT_ID &>/dev/null; then
@@ -38,6 +42,7 @@ fi
 # 2. Cloud Storage の削除
 echo "2. Cloud Storage の削除..."
 BUCKET_NAME_CLOUD_BUILD="${PROJECT_ID}_cloudbuild"
+BUCKET_NAME_DIFY="${PROJECT_ID}_dify"
 BUCKET_NAME="${PROJECT_ID}-terraform-state-dify"
 if gsutil ls -p "$PROJECT_ID" "gs://$BUCKET_NAME_CLOUD_BUILD" &>/dev/null; then
     gsutil -m rm -r "gs://$BUCKET_NAME_CLOUD_BUILD"
@@ -46,22 +51,29 @@ if gsutil ls -p "$PROJECT_ID" "gs://$BUCKET_NAME_CLOUD_BUILD" &>/dev/null; then
 else
     echo "  - バケット gs://$BUCKET_NAME_CLOUD_BUILD は存在しません"
 fi
-if gsutil ls -p "$PROJECT_ID" "gs://$BUCKET_NAME" &>/dev/null; then
-    gsutil -m rm -r "gs://$BUCKET_NAME"
-    echo "  - バケット gs://$BUCKET_NAME を削除しました"
-else
-    echo "  - バケット gs://$BUCKET_NAME は存在しません"
-fi
 
 # 3. Terraform destroy を実行
 # Terraformが依存関係を解決し、リソースを正しい順序で削除します。
 # dev環境ではCloud Runの削除保護は無効になっているため、追加の操作は不要です。
 echo "3. 'terraform destroy' を実行します..."
 echo "   VPC関連リソースの解放遅延により、一度失敗することがあります。"
-cd terraform/environments/dev
 
 # 1回目のdestroy実行
 if terraform destroy -auto-approve; then
+    # Terraform destroy成功後にdifyバケットとstateバケットを削除
+    if gsutil ls -p "$PROJECT_ID" "gs://$BUCKET_NAME_DIFY" &>/dev/null; then
+        gsutil -m rm -r "gs://$BUCKET_NAME_DIFY"
+        echo "  - バケット gs://$BUCKET_NAME_DIFY を削除しました"
+    else
+        echo "  - バケット gs://$BUCKET_NAME_DIFY は既に削除されています"
+    fi
+    echo "   Terraform stateバケットを削除します..."
+    if gsutil ls -p "$PROJECT_ID" "gs://$BUCKET_NAME" &>/dev/null; then
+        gsutil -m rm -r "gs://$BUCKET_NAME"
+        echo "  - Terraform stateバケット gs://$BUCKET_NAME を削除しました"
+    else
+        echo "  - Terraform stateバケット gs://$BUCKET_NAME は既に削除されています"
+    fi
     echo "🎉 1回目の試行でリソースの削除が完了しました。"
     exit 0
 fi
@@ -108,7 +120,7 @@ if gcloud compute networks describe dify-vpc --project=$PROJECT_ID &>/dev/null; 
     for peering_prefix in "${PEERING_ORDER[@]}"; do
         # 該当するpeeringを検出
         PEERINGS=$(gcloud compute networks peerings list --network=dify-vpc --project=$PROJECT_ID --format="value(peerings.name)" 2>/dev/null | grep "$peering_prefix" || true)
-        for peering in ${(s/;/)PEERINGS}; do
+        for peering in $(echo "$PEERINGS" | tr ';' '\n'); do
             if [ -n "$peering" ] && [ "$peering" != "dify-vpc" ]; then
                 echo "      - VPC peering $peering を削除..."
                 gcloud compute networks peerings delete $peering --network=dify-vpc --project=$PROJECT_ID --quiet 2>/dev/null || echo "        ※ $peering の削除に失敗しました"
@@ -117,7 +129,7 @@ if gcloud compute networks describe dify-vpc --project=$PROJECT_ID &>/dev/null; 
     done
     # 残りのpeeringを削除
     REMAINING_PEERINGS=$(gcloud compute networks peerings list --network=dify-vpc --project=$PROJECT_ID --format="value(peerings.name)" 2>/dev/null || true)
-    for peering in ${(s/;/)REMAINING_PEERINGS}; do
+    for peering in $(echo "$REMAINING_PEERINGS" | tr ';' '\n'); do
         if [ -n "$peering" ] && [ "$peering" != "dify-vpc" ]; then
             echo "      - 残りのVPC peering $peering を削除..."
             gcloud compute networks peerings delete $peering --network=dify-vpc --project=$PROJECT_ID --quiet 2>/dev/null || echo "        ※ $peering の削除に失敗しました"
@@ -202,11 +214,29 @@ done
 echo "   'terraform destroy' を再試行します..."
 if terraform destroy -auto-approve; then
     echo "🎉 2回目の試行でリソースの削除が完了しました。"
+    
+    # Terraform destroy成功後にdifyバケットとstateバケットを削除
+    if gsutil ls -p "$PROJECT_ID" "gs://$BUCKET_NAME_DIFY" &>/dev/null; then
+        gsutil -m rm -r "gs://$BUCKET_NAME_DIFY"
+        echo "  - バケット gs://$BUCKET_NAME_DIFY を削除しました"
+    else
+        echo "  - バケット gs://$BUCKET_NAME_DIFY は既に削除されています"
+    fi
+    echo "   Terraform stateバケットを削除します..."
+    if gsutil ls -p "$PROJECT_ID" "gs://$BUCKET_NAME" &>/dev/null; then
+        gsutil -m rm -r "gs://$BUCKET_NAME"
+        echo "  - Terraform stateバケット gs://$BUCKET_NAME を削除しました"
+    else
+        echo "  - Terraform stateバケット gs://$BUCKET_NAME は既に削除されています"
+    fi
 else
     echo "回目の試行でもエラーが発生しました。"
     echo "   GCPコンソールで残存リソースを確認し、手動で削除してください。"
     exit 1
 fi
 
+
+# ファイルの場所に戻る
+cd $SCRIPT_DIR
 echo ""
 echo "=== 削除完了 ==="

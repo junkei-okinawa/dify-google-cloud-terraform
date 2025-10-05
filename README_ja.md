@@ -254,6 +254,65 @@ cd terraform/environments/dev
 terraform destroy -auto-approve
 ```
 
+## リソース確認コマンド
+
+デプロイ完了後やクリーンアップ後に、GCPリソースの状態を確認するには以下のコマンドを使用してください。`$PROJECT_ID` を実際のプロジェクトIDに置き換え、リージョンは必要に応じて調整してください。
+
+### Terraform State
+```sh
+cd terraform/environments/dev && terraform state list
+```
+
+### VPCネットワーク
+```sh
+gcloud compute networks list --project=$PROJECT_ID
+```
+
+### サブネット
+```sh
+gcloud compute networks subnets list --project=$PROJECT_ID
+```
+
+### IPアドレス
+```sh
+gcloud compute addresses list --project=$PROJECT_ID
+```
+
+### Cloud Runサービス
+```sh
+gcloud run services list --project=$PROJECT_ID --region=asia-northeast1
+```
+
+### Cloud SQLインスタンス
+```sh
+gcloud sql instances list --project=$PROJECT_ID
+```
+
+### Redisインスタンス
+```sh
+gcloud redis instances list --project=$PROJECT_ID --region=asia-northeast1
+```
+
+### Storageバケット
+```sh
+gcloud storage buckets list --project=$PROJECT_ID
+```
+
+### Filestoreインスタンス
+```sh
+gcloud filestore instances list --project=$PROJECT_ID --location=asia-northeast1
+```
+
+### Artifact Registryリポジトリ
+```sh
+gcloud artifacts repositories list --project=$PROJECT_ID --location=asia-northeast1
+```
+
+### サービスアカウント
+```sh
+gcloud iam service-accounts list --project=$PROJECT_ID
+```
+
 ## 参照
 - [Dify](https://dify.ai/)
 - [GitHub](https://github.com/langgenius/dify)

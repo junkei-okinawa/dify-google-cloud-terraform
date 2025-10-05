@@ -152,11 +152,143 @@ esac
     terraform init -upgrade
     print_success "Terraform initialized"
 
+    # Step 3.1: Import existing resources to Terraform state
+    print_step "3.1" "Importing existing resources to Terraform state..."
+    IMPORTED_RESOURCES=()
+    
+    # Import service accounts
+    if gcloud iam service-accounts describe "dify-service-account@$PROJECT_ID.iam.gserviceaccount.com" --project="$PROJECT_ID" &>/dev/null; then
+        terraform state rm module.cloudrun.google_service_account.dify_service_account 2>/dev/null || true
+        if terraform import module.cloudrun.google_service_account.dify_service_account "projects/$PROJECT_ID/serviceAccounts/dify-service-account@$PROJECT_ID.iam.gserviceaccount.com" 2>/dev/null; then
+            IMPORTED_RESOURCES+=("dify-service-account")
+            print_success "Imported dify-service-account"
+        else
+            print_warning "dify-service-account import failed"
+        fi
+    fi
+    
+    if gcloud iam service-accounts describe "storage-admin-for-dify@$PROJECT_ID.iam.gserviceaccount.com" --project="$PROJECT_ID" &>/dev/null; then
+        terraform state rm module.storage.google_service_account.storage_admin 2>/dev/null || true
+        if terraform import module.storage.google_service_account.storage_admin "projects/$PROJECT_ID/serviceAccounts/storage-admin-for-dify@$PROJECT_ID.iam.gserviceaccount.com" 2>/dev/null; then
+            IMPORTED_RESOURCES+=("storage-admin-for-dify")
+            print_success "Imported storage-admin-for-dify"
+        else
+            print_warning "storage-admin-for-dify import failed"
+        fi
+    fi
+    
+    # Import storage bucket
+    BUCKET_NAME="${PROJECT_ID}_dify"
+    if gsutil ls -b "gs://$BUCKET_NAME" &>/dev/null; then
+        terraform state rm module.storage.google_storage_bucket.dify_storage 2>/dev/null || true
+        if terraform import module.storage.google_storage_bucket.dify_storage "$BUCKET_NAME" 2>/dev/null; then
+            IMPORTED_RESOURCES+=("dify_storage")
+            print_success "Imported dify_storage bucket"
+        else
+            print_warning "dify_storage bucket import failed"
+        fi
+    fi
+    
+    # Import Redis instance
+    if gcloud redis instances describe dify-redis --region="$REGION" --project="$PROJECT_ID" &>/dev/null; then
+        terraform state rm module.redis.google_redis_instance.dify_redis 2>/dev/null || true
+        if terraform import module.redis.google_redis_instance.dify_redis "projects/$PROJECT_ID/locations/$REGION/instances/dify-redis" 2>/dev/null; then
+            IMPORTED_RESOURCES+=("dify-redis")
+            print_success "Imported dify-redis"
+        else
+            print_warning "dify-redis import failed"
+        fi
+    fi
+    
+    # Import Filestore instance
+    FILESTORE_LOCATION="${REGION}-b"
+    if gcloud filestore instances describe dify-filestore --location="$FILESTORE_LOCATION" --project="$PROJECT_ID" &>/dev/null; then
+        terraform state rm module.filestore.google_filestore_instance.default 2>/dev/null || true
+        if terraform import module.filestore.google_filestore_instance.default "projects/$PROJECT_ID/locations/$FILESTORE_LOCATION/instances/dify-filestore" 2>/dev/null; then
+            IMPORTED_RESOURCES+=("dify-filestore")
+            print_success "Imported dify-filestore"
+        else
+            print_warning "dify-filestore import failed"
+        fi
+    fi
+    
+    # Import VPC network
+    if gcloud compute networks describe dify-vpc --project="$PROJECT_ID" &>/dev/null; then
+        terraform state rm module.network.google_compute_network.dify_vpc 2>/dev/null || true
+        if terraform import module.network.google_compute_network.dify_vpc "projects/$PROJECT_ID/global/networks/dify-vpc" 2>/dev/null; then
+            IMPORTED_RESOURCES+=("dify-vpc")
+            print_success "Imported dify-vpc"
+        else
+            print_warning "dify-vpc import failed"
+        fi
+    fi
+    
+    # Import VPC subnet
+    if gcloud compute networks subnets describe dify-subnet --region="$REGION" --project="$PROJECT_ID" &>/dev/null; then
+        terraform state rm module.network.google_compute_subnetwork.dify_subnet 2>/dev/null || true
+        if terraform import module.network.google_compute_subnetwork.dify_subnet "projects/$PROJECT_ID/regions/$REGION/subnetworks/dify-subnet" 2>/dev/null; then
+            IMPORTED_RESOURCES+=("dify-subnet")
+            print_success "Imported dify-subnet"
+        else
+            print_warning "dify-subnet import failed"
+        fi
+    fi
+    
+    # Import Artifact Registry repositories
+    if gcloud artifacts repositories describe dify-nginx-repo --location="$REGION" --project="$PROJECT_ID" &>/dev/null; then
+        terraform state rm module.registry.google_artifact_registry_repository.nginx_repo 2>/dev/null || true
+        if terraform import module.registry.google_artifact_registry_repository.nginx_repo "projects/$PROJECT_ID/locations/$REGION/repositories/dify-nginx-repo" 2>/dev/null; then
+            IMPORTED_RESOURCES+=("dify-nginx-repo")
+            print_success "Imported dify-nginx-repo"
+        else
+            print_warning "dify-nginx-repo import failed"
+        fi
+    fi
+    
+    if gcloud artifacts repositories describe dify-api-repo --location="$REGION" --project="$PROJECT_ID" &>/dev/null; then
+        terraform state rm module.registry.google_artifact_registry_repository.api_repo 2>/dev/null || true
+        if terraform import module.registry.google_artifact_registry_repository.api_repo "projects/$PROJECT_ID/locations/$REGION/repositories/dify-api-repo" 2>/dev/null; then
+            IMPORTED_RESOURCES+=("dify-api-repo")
+            print_success "Imported dify-api-repo"
+        else
+            print_warning "dify-api-repo import failed"
+        fi
+    fi
+    
+    if gcloud artifacts repositories describe dify-web-repo --location="$REGION" --project="$PROJECT_ID" &>/dev/null; then
+        terraform state rm module.registry.google_artifact_registry_repository.web_repo 2>/dev/null || true
+        if terraform import module.registry.google_artifact_registry_repository.web_repo "projects/$PROJECT_ID/locations/$REGION/repositories/dify-web-repo" 2>/dev/null; then
+            IMPORTED_RESOURCES+=("dify-web-repo")
+            print_success "Imported dify-web-repo"
+        else
+            print_warning "dify-web-repo import failed"
+        fi
+    fi
+    
+    if gcloud artifacts repositories describe dify-plugin-daemon-repo --location="$REGION" --project="$PROJECT_ID" &>/dev/null; then
+        terraform state rm module.registry.google_artifact_registry_repository.plugin_daemon_repo 2>/dev/null || true
+        if terraform import module.registry.google_artifact_registry_repository.plugin_daemon_repo "projects/$PROJECT_ID/locations/$REGION/repositories/dify-plugin-daemon-repo" 2>/dev/null; then
+            IMPORTED_RESOURCES+=("dify-plugin-daemon-repo")
+            print_success "Imported dify-plugin-daemon-repo"
+        else
+            print_warning "dify-plugin-daemon-repo import failed"
+        fi
+    fi
+    
+    if gcloud artifacts repositories describe dify-sandbox-repo --location="$REGION" --project="$PROJECT_ID" &>/dev/null; then
+        terraform state rm module.registry.google_artifact_registry_repository.sandbox_repo 2>/dev/null || true
+        if terraform import module.registry.google_artifact_registry_repository.sandbox_repo "projects/$PROJECT_ID/locations/$REGION/repositories/dify-sandbox-repo" 2>/dev/null; then
+            IMPORTED_RESOURCES+=("dify-sandbox-repo")
+            print_success "Imported dify-sandbox-repo"
+        else
+            print_warning "dify-sandbox-repo import failed"
+        fi
+    fi
+
     # Step 4: Update terraform.tfvars
     print_step "4" "Updating terraform.tfvars..."
     sed -i.bak "s/your-project-id/$PROJECT_ID/g" terraform.tfvars
     sed -i.bak "s/your-region/$REGION/g" terraform.tfvars
-    sed -i.bak "s/asia-northeast1/$REGION/g" terraform.tfvars
 
     # Generate and replace secret keys if they are still default values
     if grep -q 'secret_key.*=.*"your-secret-key"' terraform.tfvars; then
@@ -186,26 +318,56 @@ esac
         exit 0
     fi
 
-    # Step 5: Create Artifact Registry repositories
-    print_step "5" "Creating Artifact Registry repositories..."
-    terraform apply -target=module.registry -auto-approve
-    print_success "Artifact Registry repositories created"
+    # Step 5: Check Artifact Registry repositories
+    print_step "5" "Checking Artifact Registry repositories..."
+    # All repositories should be imported in Step 3.1, so just verify they exist
+    EXISTING_REPOS=$(gcloud artifacts repositories list --project="$PROJECT_ID" --location="$REGION" --filter="name~dify*" --format="value(name)" | wc -l)
+    if [ "$EXISTING_REPOS" -eq 5 ]; then
+        print_success "All Artifact Registry repositories exist and are imported"
+    else
+        print_warning "Some repositories are missing. Expected 5, found $EXISTING_REPOS. Creating missing repositories with Terraform."
+        # Apply only the registry module to create missing repositories
+        terraform apply -target=module.registry -auto-approve
+        print_success "Missing repositories created."
+    fi
 
     # Step 6: Build and push container images
     print_step "6" "Building and pushing container images..."
     cd ../../..
-    # コンテナイメージが未プッシュの場合はプッシュ
-    if ! gcloud artifacts repositories list --project="$PROJECT_ID" --location="$REGION" --filter="name~dify*"; then
+    # Check if required images exist (only nginx and api need to be built locally)
+    NGINX_IMAGE_EXISTS=$(gcloud artifacts docker images list "${REGION}-docker.pkg.dev/$PROJECT_ID/dify-nginx-repo" --format="value(uri)" | grep -q "dify-nginx:latest" && echo "true" || echo "false")
+    API_IMAGE_EXISTS=$(gcloud artifacts docker images list "${REGION}-docker.pkg.dev/$PROJECT_ID/dify-api-repo" --format="value(uri)" | grep -q "dify-api:latest" && echo "true" || echo "false")
+    
+    if [ "$NGINX_IMAGE_EXISTS" = "false" ] || [ "$API_IMAGE_EXISTS" = "false" ]; then
+        print_warning "Some container images not found. Building from scratch..."
         chmod +x docker/cloudbuild.sh
         ./docker/cloudbuild.sh "$PROJECT_ID" "$REGION"
         print_success "Container images built and pushed"
     else
-        print_warning "Container images already exist in Artifact Registry. Skipping build and push."
+        print_warning "All required container images already exist in Artifact Registry. Skipping build and push."
+        echo "If you want to rebuild images, delete them first:"
+        echo "gcloud artifacts docker images delete \$(gcloud artifacts docker images list ${REGION}-docker.pkg.dev/$PROJECT_ID/dify-nginx-repo --format='value(uri)') --delete-tags"
+        echo "gcloud artifacts docker images delete \$(gcloud artifacts docker images list ${REGION}-docker.pkg.dev/$PROJECT_ID/dify-api-repo --format='value(uri)') --delete-tags"
     fi
 
     # Step 7: Apply Terraform configuration
     print_step "7" "Applying Terraform configuration..."
     cd terraform/environments/dev
+    
+    # Check what changes terraform plans to make
+    print_step "7.1" "Checking terraform plan..."
+    if terraform plan -var-file="terraform.tfvars" | grep -E "(Plan:|No changes)"; then
+        print_success "Terraform plan shows no unexpected changes"
+    else
+        print_warning "Terraform plan shows changes. Please review the plan above."
+        echo "Do you want to continue? (y/N): "
+        read -r response
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            print_error "Deployment cancelled by user"
+            exit 1
+        fi
+    fi
+    
     terraform apply -auto-approve
     print_success "Terraform apply completed"
 
@@ -233,7 +395,7 @@ esac
         echo "3. Start using Dify!"
         echo ""
         echo "To clean up resources later, run:"
-        echo "./cleanup-resources.sh $PROJECT_ID"
+        echo "./cleanup-resources.sh $PROJECT_ID $REGION"
     else
         print_warning "Could not retrieve Dify URL. Services might still be starting up."
         echo "You can check the URL later with:"

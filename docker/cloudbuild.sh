@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e  # Exit on any error
+
 PROJECT_ID=$1
 REGION=$2
 DIFY_API_VERSION=${3:-"latest"}

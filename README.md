@@ -206,6 +206,65 @@ gcloud run services list \
   --format="table(metadata.name,status.url,status.conditions[0].type,status.conditions[0].status)"
 ```
 
+## Resource Verification Commands
+
+After deployment or cleanup, you can verify the status of GCP resources using the following commands. Replace `$PROJECT_ID` with your actual project ID and adjust the region as needed.
+
+### Terraform State
+```sh
+cd terraform/environments/dev && terraform state list
+```
+
+### VPC Networks
+```sh
+gcloud compute networks list --project=$PROJECT_ID
+```
+
+### Subnets
+```sh
+gcloud compute networks subnets list --project=$PROJECT_ID
+```
+
+### IP Addresses
+```sh
+gcloud compute addresses list --project=$PROJECT_ID
+```
+
+### Cloud Run Services
+```sh
+gcloud run services list --project=$PROJECT_ID --region=asia-northeast1
+```
+
+### Cloud SQL Instances
+```sh
+gcloud sql instances list --project=$PROJECT_ID
+```
+
+### Redis Instances
+```sh
+gcloud redis instances list --project=$PROJECT_ID --region=asia-northeast1
+```
+
+### Storage Buckets
+```sh
+gcloud storage buckets list --project=$PROJECT_ID
+```
+
+### Filestore Instances
+```sh
+gcloud filestore instances list --project=$PROJECT_ID --location=asia-northeast1
+```
+
+### Artifact Registry Repositories
+```sh
+gcloud artifacts repositories list --project=$PROJECT_ID --location=asia-northeast1
+```
+
+### Service Accounts
+```sh
+gcloud iam service-accounts list --project=$PROJECT_ID
+```
+
 ## Cleanup
 
 ### Automated Cleanup Script (Recommended)
