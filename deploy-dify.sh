@@ -103,6 +103,11 @@ esac
 
     check_prerequisites
 
+    # Set gcloud project to ensure all commands use the correct project
+    print_step "0.1" "Setting gcloud project to $PROJECT_ID..."
+    gcloud config set project "$PROJECT_ID"
+    print_success "gcloud project set to $PROJECT_ID"
+
     # Change to script directory
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     cd "$SCRIPT_DIR"
@@ -129,6 +134,18 @@ esac
             --project="$PROJECT_ID" \
             --quiet
         print_success "APIs enabled successfully"
+
+        # Grant Cloud Build service account permissions for Artifact Registry
+        print_step "1.1" "Setting up Cloud Build service account permissions..."
+        PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
+        CLOUDBUILD_SA="$PROJECT_NUMBER@cloudbuild.gserviceaccount.com"
+        
+        # Grant Artifact Registry Writer role to Cloud Build service account
+        gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+            --member="serviceAccount:$CLOUDBUILD_SA" \
+            --role="roles/artifactregistry.writer" \
+            --quiet
+        print_success "Granted Artifact Registry permissions to Cloud Build service account"
 
         # Step 2: Create Terraform state bucket
         print_step "2" "Creating Terraform state bucket..."
