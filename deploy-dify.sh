@@ -166,7 +166,17 @@ esac
     # Step 3: Initialize Terraform
     print_step "3" "Initializing Terraform..."
     cd terraform/environments/dev
-    terraform init -upgrade
+    
+    # Check if the project ID has changed by comparing with the current backend configuration
+    CURRENT_BUCKET=$(grep 'bucket.*=' provider.tf | sed -n 's/.*bucket.*=.*"\(.*\)".*/\1/p' | tr -d ' ')
+    EXPECTED_BUCKET="${PROJECT_ID}-terraform-state-dify"
+    
+    if [ "$CURRENT_BUCKET" != "$EXPECTED_BUCKET" ] && [ "$CURRENT_BUCKET" != "your-tfstate-bucket" ]; then
+        print_warning "Project ID changed detected. Reconfiguring Terraform backend..."
+        terraform init -upgrade -reconfigure
+    else
+        terraform init -upgrade
+    fi
     print_success "Terraform initialized"
 
     # Step 3.1: Import existing resources to Terraform state
