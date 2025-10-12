@@ -66,9 +66,8 @@ module "cloudrun" {
   filestore_ip_address        = module.filestore.filestore_ip_address
   filestore_fileshare_name    = module.filestore.filestore_fileshare_name
   shared_env_vars             = local.shared_env_vars
-  min_instance_count          = var.min_instance_count
-  max_instance_count          = var.max_instance_count
   storage_bucket_name         = module.storage.storage_bucket_name
+  labels                      = var.labels
 
   depends_on = [google_project_service.enabled_services]
 }
@@ -81,6 +80,7 @@ module "cloudsql" {
   db_username         = var.db_username
   db_password         = var.db_password
   deletion_protection = var.db_deletion_protection
+  labels              = var.labels
 
   vpc_network_name = module.network.vpc_network_name
 
@@ -92,6 +92,7 @@ module "redis" {
 
   project_id = var.project_id
   region     = var.region
+  labels     = var.labels
 
   vpc_network_name = module.network.vpc_network_name
 
@@ -103,6 +104,7 @@ module "network" {
 
   project_id = var.project_id
   region     = var.region
+  labels     = var.labels
 
   depends_on = [google_project_service.enabled_services]
 }
@@ -113,6 +115,7 @@ module "storage" {
   project_id                 = var.project_id
   region                     = var.region
   google_storage_bucket_name = var.google_storage_bucket_name
+  labels                     = var.labels
 
   depends_on = [google_project_service.enabled_services]
 }
@@ -121,6 +124,7 @@ module "filestore" {
   source = "../../modules/filestore"
 
   region = var.region
+  labels = var.labels
 
   vpc_network_name = module.network.vpc_network_name
 
@@ -137,6 +141,7 @@ module "registry" {
   api_repository_id           = var.api_repository_id
   sandbox_repository_id       = var.sandbox_repository_id
   plugin_daemon_repository_id = var.plugin_daemon_repository_id
+  labels                      = var.labels
 
   depends_on = [google_project_service.enabled_services]
 }

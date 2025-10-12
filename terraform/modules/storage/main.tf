@@ -6,6 +6,8 @@ resource "google_storage_bucket" "dify_storage" {
   public_access_prevention    = "enforced"
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
+  
+  labels = var.labels
 }
 
 resource "google_service_account" "storage_admin" {

@@ -25,3 +25,9 @@ variable "sandbox_repository_id" {
 variable "plugin_daemon_repository_id" {
   type = string
 }
+
+variable "labels" {
+  description = "Labels to apply to resources"
+  type        = map(string)
+  default     = {}
+}

@@ -26,6 +26,8 @@ resource "google_sql_database_instance" "postgres_instance" {
   settings {
     activation_policy = "ALWAYS"
     availability_type = "ZONAL"
+    
+    user_labels = var.labels
 
     backup_configuration {
       backup_retention_settings {

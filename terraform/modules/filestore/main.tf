@@ -12,4 +12,6 @@ resource "google_filestore_instance" "default" {
     network = var.vpc_network_name
     modes   = ["MODE_IPV4"]
   }
+  
+  labels = var.labels
 }

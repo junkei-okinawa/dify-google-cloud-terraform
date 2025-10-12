@@ -201,6 +201,36 @@ gcloud run services list \
   --format="table(metadata.name,status.url,status.conditions[0].type,status.conditions[0].status)"
 ```
 
+### Difyのログ確認
+
+```sh
+# Difyサービスのログを確認（最新100件）
+gcloud run services logs read dify-service \
+  --project=$PROJECT_ID \
+  --region=asia-northeast1 \
+  --limit=100
+
+# Difyサービスのログをリアルタイム監視
+gcloud run services logs read dify-service \
+  --project=$PROJECT_ID \
+  --region=asia-northeast1 \
+  --limit=100 \
+  --follow
+
+# 特定のエラーでフィルタリング
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=dify-service AND severity>=ERROR" \
+  --project=$PROJECT_ID \
+  --limit=50 \
+  --format="table(timestamp,severity,textPayload)"
+
+# 特定の時間範囲のログを取得（例：過去1時間）
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=dify-service" \
+  --project=$PROJECT_ID \
+  --limit=100 \
+  --format="table(timestamp,severity,textPayload)" \
+  --freshness=1h
+```
+
 
 ## リソースの削除
 

@@ -103,17 +103,25 @@ variable "shared_env_vars" {
   type        = map(string)
 }
 
+variable "storage_bucket_name" {
+  description = "The name of the storage bucket."
+  type        = string
+}
+
 variable "min_instance_count" {
   description = "The minimum number of instances for Cloud Run."
   type        = number
+  default     = 0
 }
 
 variable "max_instance_count" {
   description = "The maximum number of instances for Cloud Run."
   type        = number
+  default     = 5
 }
 
-variable "storage_bucket_name" {
-  description = "The name of the storage bucket."
-  type        = string
+variable "labels" {
+  description = "Labels to apply to resources"
+  type        = map(string)
+  default     = {}
 }

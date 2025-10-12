@@ -70,34 +70,74 @@ check_prerequisites() {
 
 # Main script
 main() {
+    # Check for help flag first
+    if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+        echo "Usage: $0 [--plan-only] [--dev|--staging|--prod] <PROJECT_ID> <REGION>"
+        echo ""
+        echo "Options:"
+        echo "  --plan-only         Run terraform plan only (no apply)"
+        echo "  --dev               Deploy to dev environment (default)"
+        echo "  --staging           Deploy to staging environment"
+        echo "  --prod              Deploy to production environment"
+        echo ""
+        echo "Examples:"
+        echo "  $0 your-gcp-project-id asia-northeast1"
+        echo "  $0 --prod my-production-project asia-northeast1"
+        echo "  $0 --plan-only --staging my-staging-project asia-northeast1"
+        exit 0
+    fi
+    
     # Check arguments
     PLAN_ONLY=false
+    ENVIRONMENT="dev"  # デフォルト環境
+    
     while [ $# -gt 0 ]; do
         case "$1" in
             --plan-only)
                 PLAN_ONLY=true
                 shift
                 ;;
+            --dev|--staging|--prod)
+                ENVIRONMENT="${1#--}"  # Remove leading '--'
+                shift
+                ;;
             *)
                 break
                 ;;
-esac
+        esac
     done
 
     if [ $# -ne 2 ]; then
-        echo "Usage: $0 [--plan-only] <PROJECT_ID> <REGION>"
-        echo "Example: $0 --plan-only my-project asia-northeast1"
+        echo "Usage: $0 [--plan-only] [--dev|--staging|--prod] <PROJECT_ID> <REGION>"
+        echo ""
+        echo "Options:"
+        echo "  --plan-only         Run terraform plan only (no apply)"
+        echo "  --dev               Deploy to dev environment (default)"
+        echo "  --staging           Deploy to staging environment"
+        echo "  --prod              Deploy to production environment"
+        echo ""
+        echo "Examples:"
+        echo "  $0 your-gcp-project-id asia-northeast1"
+        echo "  $0 --prod my-production-project asia-northeast1"
+        echo "  $0 --plan-only --staging my-staging-project asia-northeast1"
         exit 1
     fi
 
     PROJECT_ID="$1"
     REGION="$2"
+    BUCKET_NAME="${PROJECT_ID}-terraform-state-dify"
+    TERRAFORM_DIR="terraform/environments/${ENVIRONMENT}"
 
-    echo "Starting Dify deployment with:"
-    echo "  Project ID: $PROJECT_ID"
-    echo "  Region: $REGION"
+    echo "=========================================="
+    echo "Dify Automated Deployment"
+    echo "=========================================="
+    echo "Project ID:  ${PROJECT_ID}"
+    echo "Region:      ${REGION}"
+    echo "Environment: ${ENVIRONMENT}"
+    echo "Terraform:   ${TERRAFORM_DIR}"
+    echo "Bucket:      ${BUCKET_NAME}"
     if [ "$PLAN_ONLY" = true ]; then
-        echo "  Mode: Plan-only"
+        echo "Mode:        Plan-only"
     fi
     echo ""
 
@@ -115,7 +155,7 @@ esac
     if [ "$PLAN_ONLY" = true ]; then
         # Skip Step 1: Enable required APIs
         # Skip Step 2: Create Terraform state bucket
-        echo "Skipping Steps 1 and 2 as not in plan-only mode"
+        echo "Skipping Steps 1 and 2 in plan-only mode"
     else
         # Step 1: Enable required APIs
         print_step "1" "Enabling required Google Cloud APIs..."
@@ -140,16 +180,29 @@ esac
         PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
         CLOUDBUILD_SA="$PROJECT_NUMBER@cloudbuild.gserviceaccount.com"
         
-        # Grant Artifact Registry Writer role to Cloud Build service account
-        gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-            --member="serviceAccount:$CLOUDBUILD_SA" \
-            --role="roles/artifactregistry.writer" \
-            --quiet
-        print_success "Granted Artifact Registry permissions to Cloud Build service account"
+        # Check if Cloud Build SA already has the role
+        ROLE_BINDING_EXISTS=$(gcloud projects get-iam-policy "$PROJECT_ID" \
+            --flatten="bindings[].members" \
+            --filter="bindings.role:roles/artifactregistry.writer AND bindings.members:serviceAccount:$CLOUDBUILD_SA" \
+            --format="value(bindings.role)" 2>/dev/null || echo "")
+
+        if [ -z "$ROLE_BINDING_EXISTS" ]; then
+            # Grant Artifact Registry Writer role to Cloud Build service account
+            gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+                --member="serviceAccount:$CLOUDBUILD_SA" \
+                --role="roles/artifactregistry.writer" \
+                --quiet
+            print_success "Granted Artifact Registry permissions to Cloud Build service account"
+            
+            # Wait for IAM propagation only when role was just granted
+            print_warning "Waiting 30 seconds for IAM propagation..."
+            sleep 30
+        else
+            print_success "Cloud Build service account already has Artifact Registry permissions"
+        fi
 
         # Step 2: Create Terraform state bucket
-        print_step "2" "Creating Terraform state bucket..."
-        BUCKET_NAME="${PROJECT_ID}-terraform-state-dify"
+        print_step "2" "Setting up Terraform state bucket..."
 
         if ! gsutil ls -p "$PROJECT_ID" "gs://$BUCKET_NAME" 2>/dev/null; then
             gsutil mb -p "$PROJECT_ID" -c STANDARD -l "$REGION" "gs://$BUCKET_NAME"
@@ -158,14 +211,30 @@ esac
             print_warning "Bucket already exists: gs://$BUCKET_NAME"
         fi
 
+        # Apply labels to Terraform state bucket
+        print_step "2.1" "Applying labels to Terraform state bucket..."
+        gsutil label ch \
+            -l managed_by:terraform \
+            -l project:dify \
+            -l component:ai-platform \
+            -l environment:${ENVIRONMENT} \
+            -l purpose:terraform-state \
+            "gs://${BUCKET_NAME}/"
+        print_success "Labels applied to Terraform state bucket"
+
         # Update provider.tf
-        sed -i.bak "s/your-tfstate-bucket/$BUCKET_NAME/g" terraform/environments/dev/provider.tf
-        print_success "Updated provider.tf with bucket name"
+        if [ -f "terraform/environments/${ENVIRONMENT}/provider.tf" ]; then
+            sed -i.bak "s/your-tfstate-bucket/$BUCKET_NAME/g" "terraform/environments/${ENVIRONMENT}/provider.tf"
+            print_success "Updated provider.tf with bucket name"
+        else
+            print_error "provider.tf not found for environment: ${ENVIRONMENT}"
+            exit 1
+        fi
     fi
 
     # Step 3: Initialize Terraform
     print_step "3" "Initializing Terraform..."
-    cd terraform/environments/dev
+    cd "${TERRAFORM_DIR}"
     
     # Check if the project ID has changed by comparing with the current backend configuration
     CURRENT_BUCKET=$(grep 'bucket.*=' provider.tf | sed -n 's/.*bucket.*=.*"\(.*\)".*/\1/p' | tr -d ' ')

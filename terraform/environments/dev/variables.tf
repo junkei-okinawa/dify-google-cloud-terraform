@@ -98,10 +98,12 @@ variable "dify_plugin_daemon_version" {
   type = string
 }
 
-variable "min_instance_count" {
-  type = number
-}
-
-variable "max_instance_count" {
-  type = number
+variable "labels" {
+  description = "Labels to apply to resources"
+  type        = map(string)
+  default = {
+    managed_by  = "terraform"
+    project     = "dify"
+    component   = "ai-platform"
+  }
 }

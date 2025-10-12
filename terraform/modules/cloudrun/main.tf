@@ -45,9 +45,26 @@ resource "google_cloud_run_v2_service" "dify_service" {
   location = var.region
   ingress  = var.cloud_run_ingress
   deletion_protection = var.environment == "prod"
+  
+  labels = merge(
+    var.labels,
+    {
+      environment = var.environment
+      service     = "dify-main"
+    }
+  )
+  
   template {
     service_account       = google_service_account.dify_service_account.email
     execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
+    
+    labels = merge(
+      var.labels,
+      {
+        environment = var.environment
+        service     = "dify-main"
+      }
+    )
     containers {
       name  = "nginx"
       image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.nginx_repository_id}/dify-nginx:latest"
@@ -405,8 +422,23 @@ resource "google_cloud_run_v2_service" "dify_sandbox" {
   name     = "dify-sandbox"
   location = var.region
   deletion_protection = var.environment == "prod"
+  
+  labels = merge(
+    var.labels,
+    {
+      environment = var.environment
+      service     = "dify-sandbox"
+    }
+  )
 
   template {
+    labels = merge(
+      var.labels,
+      {
+        environment = var.environment
+        service     = "dify-sandbox"
+      }
+    )
     containers {
       name  = "dify-sandbox"
       image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.sandbox_repository_id}/langgenius/dify-sandbox:${var.dify_sandbox_version}"

@@ -4,6 +4,8 @@ resource "google_artifact_registry_repository" "nginx_repo" {
   location      = var.region
   repository_id = var.nginx_repository_id
   format        = "DOCKER"
+  
+  labels = var.labels
 }
 
 resource "google_artifact_registry_repository" "api_repo" {
@@ -12,6 +14,8 @@ resource "google_artifact_registry_repository" "api_repo" {
   location      = var.region
   repository_id = var.api_repository_id
   format        = "DOCKER"
+  
+  labels = var.labels
 }
 
 resource "google_artifact_registry_repository" "web_repo" {
@@ -26,6 +30,8 @@ resource "google_artifact_registry_repository" "web_repo" {
       public_repository = "DOCKER_HUB"
     }
   }
+  
+  labels = var.labels
 }
 
 resource "google_artifact_registry_repository" "sandbox_repo" {
@@ -40,6 +46,8 @@ resource "google_artifact_registry_repository" "sandbox_repo" {
       public_repository = "DOCKER_HUB"
     }
   }
+  
+  labels = var.labels
 }
 
 resource "google_artifact_registry_repository" "plugin_daemon_repo" {
@@ -54,4 +62,6 @@ resource "google_artifact_registry_repository" "plugin_daemon_repo" {
       public_repository = "DOCKER_HUB"
     }
   }
+  
+  labels = var.labels
 }

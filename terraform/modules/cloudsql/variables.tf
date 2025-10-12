@@ -21,3 +21,9 @@ variable "vpc_network_name" {
 variable "deletion_protection" {
   type = bool
 }
+
+variable "labels" {
+  description = "Labels to apply to resources"
+  type        = map(string)
+  default     = {}
+}
