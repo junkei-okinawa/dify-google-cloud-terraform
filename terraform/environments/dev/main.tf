@@ -75,12 +75,17 @@ module "cloudrun" {
 module "cloudsql" {
   source = "../../modules/cloudsql"
 
-  project_id          = var.project_id
-  region              = var.region
-  db_username         = var.db_username
-  db_password         = var.db_password
-  deletion_protection = var.db_deletion_protection
-  labels              = var.labels
+  project_id           = var.project_id
+  region               = var.region
+  db_username          = var.db_username
+  db_password          = var.db_password
+  deletion_protection  = var.db_deletion_protection
+  db_tier              = var.db_tier
+  db_disk_size         = var.db_disk_size
+  db_disk_type         = var.db_disk_type
+  db_availability_type = var.db_availability_type
+  db_backup_enabled    = var.db_backup_enabled
+  labels               = var.labels
 
   vpc_network_name = module.network.vpc_network_name
 
@@ -90,9 +95,11 @@ module "cloudsql" {
 module "redis" {
   source = "../../modules/redis"
 
-  project_id = var.project_id
-  region     = var.region
-  labels     = var.labels
+  project_id           = var.project_id
+  region               = var.region
+  redis_tier           = var.redis_tier
+  redis_memory_size_gb = var.redis_memory_size_gb
+  labels               = var.labels
 
   vpc_network_name = module.network.vpc_network_name
 
@@ -123,8 +130,9 @@ module "storage" {
 module "filestore" {
   source = "../../modules/filestore"
 
-  region = var.region
-  labels = var.labels
+  region                = var.region
+  filestore_capacity_gb = var.filestore_capacity_gb  # Dev環境用の容量設定
+  labels                = var.labels
 
   vpc_network_name = module.network.vpc_network_name
 

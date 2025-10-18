@@ -25,27 +25,27 @@ resource "google_sql_database_instance" "postgres_instance" {
 
   settings {
     activation_policy = "ALWAYS"
-    availability_type = "ZONAL"
+    availability_type = var.db_availability_type  # Dev: ZONAL, Prod: REGIONAL
     
     user_labels = var.labels
 
     backup_configuration {
       backup_retention_settings {
-        retained_backups = 7
+        retained_backups = var.db_backup_enabled ? 7 : 0
         retention_unit   = "COUNT"
       }
 
-      enabled                        = true
+      enabled                        = var.db_backup_enabled  # Dev: falseでコスト削減
       location                       = "asia"
-      point_in_time_recovery_enabled = true
+      point_in_time_recovery_enabled = var.db_backup_enabled
       start_time                     = "21:00"
-      transaction_log_retention_days = 7
+      transaction_log_retention_days = var.db_backup_enabled ? 7 : 1
     }
 
     disk_autoresize       = true
     disk_autoresize_limit = 0
-    disk_size             = 100
-    disk_type             = "PD_SSD"
+    disk_size             = var.db_disk_size      # Dev: 20GB
+    disk_type             = var.db_disk_type       # Dev: PD_HDD
 
     ip_configuration {
       ipv4_enabled    = true
@@ -62,7 +62,7 @@ resource "google_sql_database_instance" "postgres_instance" {
     }
 
     pricing_plan = "PER_USE"
-    tier         = "db-custom-2-8192"
+    tier         = var.db_tier  # Dev: db-custom-1-3840 (1 vCPU, 3.75GB)
   }
 }
 
