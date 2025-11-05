@@ -23,6 +23,13 @@ echo ""
 SCRIPT_DIR=$(cd $(dirname $0); pwd)
 cd $SCRIPT_DIR/terraform/environments/dev
 
+# terraform.tfvars を更新
+echo "Terraform 設定ファイルを更新します..."
+sed -i.tmp "s|^project_id.*=.*\".*\"|project_id = \"$PROJECT_ID\"|g" terraform.tfvars
+sed -i.tmp "s|^region.*=.*\".*\"|region = \"$REGION\"|g" terraform.tfvars
+rm -f terraform.tfvars.tmp
+echo "  - terraform.tfvars を更新しました"
+
 # 1. Cloud SQL インスタンスの削除
 # Cloud SQLインスタンスが残っている場合のみデータベースを削除
 if gcloud sql instances describe postgres-instance --project=$PROJECT_ID &>/dev/null; then
@@ -57,6 +64,10 @@ fi
 # dev環境ではCloud Runの削除保護は無効になっているため、追加の操作は不要です。
 echo "3. 'terraform destroy' を実行します..."
 echo "   VPC関連リソースの解放遅延により、一度失敗することがあります。"
+
+# Terraform backend を初期化
+echo "   Terraform backend を初期化します..."
+terraform init -reconfigure -backend-config="bucket=${BUCKET_NAME}"
 
 # 1回目のdestroy実行
 if terraform destroy -auto-approve; then
@@ -212,6 +223,8 @@ done
 
 # 2回目のdestroy実行
 echo "   'terraform destroy' を再試行します..."
+echo "   Terraform backend を再初期化します..."
+terraform init -reconfigure -backend-config="bucket=${BUCKET_NAME}"
 if terraform destroy -auto-approve; then
     echo "🎉 2回目の試行でリソースの削除が完了しました。"
     
